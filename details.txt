@@ -1,0 +1,34 @@
+Display name
+:
+BulkEmailSender
+
+Application (client) ID
+:
+6e7585b0-ec28-4b0f-975a-8f1254cec059
+
+Object ID
+:
+01e7f8e2-94c6-4dc4-9f16-22e78c9fa6ba
+
+Directory (tenant) ID
+:
+914b2d5a-1181-4a4c-802d-0f5d3c35b42c
+
+Supported account types
+:
+
+Client credentials
+:
+Add a certificate or secret
+Redirect URIs
+:
+Add a Redirect URI
+Application ID URI
+:
+Add an Application ID URI
+Managed application in local directory
+:
+BulkEmailSender
+
+Secret Id
+37893cd4-4a42-4e56-a774-2b094cd759ff
