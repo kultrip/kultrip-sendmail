@@ -1,4 +1,5 @@
 import pandas as pd
+import random
 import argparse
 import os
 import requests
@@ -90,6 +91,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bulk mails using Microsoft Graph API")
     parser.add_argument('--max', type=int, default=10, help='Maximum number of mails to be sent (if there are fewer, sends only those)')
     parser.add_argument('--template', type=str, default='email_template.html', help='HTML template')
+    parser.add_argument('--template_noname', type=str, default='email_template_noname.html', help='HTML template for missing Name')
     parser.add_argument('--start', type=int, default=0, help='Initial index (base 0) in contacts.tsv')
     parser.add_argument('--attachment', type=str, default='signature.png', help='Attachment file path')
     parser.add_argument('--sentlog', type=str, default=SENT_EMAILS_FILE, help='File to store sent emails')
@@ -104,8 +106,11 @@ def main():
     contacts = filter_valid_emails(contacts)
     contacts = contacts.iloc[args.start:args.start+args.max]
 
+    # Pre-load both templates
     with open(args.template, 'r', encoding='utf-8') as f:
         html_template = f.read()
+    with open(args.template_noname, 'r', encoding='utf-8') as f:
+        html_template_noname = f.read()
 
     scopes = ["Mail.Send"]
     access_token = get_access_token(client_id, tenant_id, scopes)
@@ -115,10 +120,25 @@ def main():
         if recipient_email in sent_emails:
             print(f"Skipping {recipient_email} (already sent)")
             continue
-        html_body = html_template
+        name = row.get('Name', '')
+        if pd.isnull(name) or str(name).strip() == '' or str(name).lower() == 'nan':
+            html_body = html_template_noname
+            SUBJECTS = [
+                "Crea itinerarios turísticos personalizados en minutos para tus clientes",
+                "Te presento un mercado de $66.2 billones que pocos están explorando",
+                "¿Tienes pacotes de viajes inspirados por películas y séries?"
+            ]
+        else:
+            html_body = html_template
+            SUBJECTS = [
+                f"{row['Name']}, cria itinerarios turísticos personalisados en minutos para tus clientes",
+                f"{row['Name']}, te presento un mercado de $66.2 billones que pocos están explorando",
+                f"{row['Name']}, ¿tienes pacotes de viajes inspirados por películas y séries?"
+            ]
         for col in contacts.columns:
             html_body = html_body.replace(f"{{{{{col}}}}}", str(row[col]))
-        subject = f"{row['Name']}, crie roteiros personalizados em minutos para seus clientes"
+
+        subject = random.choice(SUBJECTS)
         if send_graph_email(
             access_token=access_token,
             recipient=recipient_email,
