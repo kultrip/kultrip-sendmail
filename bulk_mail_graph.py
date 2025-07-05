@@ -66,7 +66,7 @@ def send_graph_email(access_token, recipient, subject, html_body, attachment_pat
         attachment = {
             "@odata.type": "#microsoft.graph.fileAttachment",
             "name": os.path.basename(attachment_path),
-            "contentId": os.path.basename(attachment_path),  # This must match the cid in your HTML
+            "contentId": os.path.basename(attachment_path),
             "isInline": True,
             "contentBytes": content_bytes
         }
@@ -90,8 +90,6 @@ def main():
 
     parser = argparse.ArgumentParser(description="Bulk mails using Microsoft Graph API")
     parser.add_argument('--max', type=int, default=10, help='Maximum number of mails to be sent (if there are fewer, sends only those)')
-    parser.add_argument('--template', type=str, default='email_template.html', help='HTML template')
-    parser.add_argument('--template_noname', type=str, default='email_template_noname.html', help='HTML template for missing Name')
     parser.add_argument('--start', type=int, default=0, help='Initial index (base 0) in contacts.tsv')
     parser.add_argument('--attachment', type=str, default='signature.png', help='Attachment file path')
     parser.add_argument('--sentlog', type=str, default=SENT_EMAILS_FILE, help='File to store sent emails')
@@ -104,39 +102,61 @@ def main():
 
     contacts = pd.read_csv('contacts.tsv', sep='\t')
     contacts = filter_valid_emails(contacts)
+
+    # Filter out already sent emails before slicing
+    contacts = contacts[~contacts['Email'].str.strip().str.lower().isin(sent_emails)].reset_index(drop=True)
     contacts = contacts.iloc[args.start:args.start+args.max]
 
-    # Pre-load both templates
-    with open(args.template, 'r', encoding='utf-8') as f:
-        html_template = f.read()
-    with open(args.template_noname, 'r', encoding='utf-8') as f:
-        html_template_noname = f.read()
+    # Load all templates into a list (the names are fixed)
+    template_filenames = ['email_template_1.html', 'email_template_2.html', 'email_template_3.html']
+    html_templates = []
+    for tp in template_filenames:
+        with open(tp, 'r', encoding='utf-8') as f:
+            html_templates.append(f.read())
+
+    # List of subjects (independent of template)
+    SUBJECTS = [
+        "¿Y si te pidiera un itinerario basado en 'Emily in Paris'?",
+        "¿Cuánto tiempo para un itinerario basado en 'La Casa de Papel'?",
+        "¿Perdiste ventas por falta de experiencias únicas?"
+    ]
 
     scopes = ["Mail.Send"]
     access_token = get_access_token(client_id, tenant_id, scopes)
 
+    sent_this_run = set()
+
     for idx, row in contacts.iterrows():
         recipient_email = row['Email'].strip().lower()
-        if recipient_email in sent_emails:
-            print(f"Skipping {recipient_email} (already sent)")
+        if recipient_email in sent_emails or recipient_email in sent_this_run:
+            print(f"Skipping {recipient_email} (already sent or duplicate in this run)")
             continue
+
+        # Pick a template at random
+        template_idx = random.randint(0, 2)
+        html_body = html_templates[template_idx]
+
+        # Name and Agency logic
         name = row.get('Name', '')
-        if pd.isnull(name) or str(name).strip() == '' or str(name).lower() == 'nan':
-            html_body = html_template_noname
-            SUBJECTS = [
-                "Crea itinerarios turísticos personalizados en minutos para tus clientes",
-                "Te presento un mercado de $66.2 billones que pocos están explorando",
-                "¿Tienes pacotes de viajes inspirados por películas y séries?"
-            ]
+        if pd.isnull(name) or str(name).strip().lower() in ('', 'nan', 'na'):
+            name_value = "¿Qué tal?"
         else:
-            html_body = html_template
-            SUBJECTS = [
-                f"{row['Name']}, cria itinerarios turísticos personalisados en minutos para tus clientes",
-                f"{row['Name']}, te presento un mercado de $66.2 billones que pocos están explorando",
-                f"{row['Name']}, ¿tienes pacotes de viajes inspirados por películas y séries?"
-            ]
-        for col in contacts.columns:
-            html_body = html_body.replace(f"{{{{{col}}}}}", str(row[col]))
+            name_value = str(name).strip()
+
+        agency = row.get('Agency', '')
+        if pd.isnull(agency) or str(agency).strip().lower() in ('', 'nan', 'na'):
+            agency_value = "tu agencia"
+        else:
+            agency_value = str(agency).strip()
+
+        replacements = {
+            'Name': name_value,
+            'Agency': agency_value
+        }
+
+        # Replace only Name and Agency
+        for key, value in replacements.items():
+            html_body = html_body.replace(f"{{{{{key}}}}}", value)
 
         subject = random.choice(SUBJECTS)
         if send_graph_email(
@@ -147,7 +167,7 @@ def main():
             attachment_path=args.attachment
         ):
             save_sent_email(args.sentlog, recipient_email)
-            sent_emails.add(recipient_email)
+            sent_this_run.add(recipient_email)
 
     print("All messages sent.")
 
